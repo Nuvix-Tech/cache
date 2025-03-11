@@ -7,7 +7,7 @@ import { performance } from "perf_hooks";
  * Manages cache operations including get, set, delete, and clear.
  * Provides telemetry and event emission for cache operations.
  */
-export class Cache{
+export class Cache {
   private adapter: CacheAdapter;
   private static caseSensitive = false;
   private telemetry: Telemetry;
@@ -138,17 +138,17 @@ export class Cache{
   }
 
   /**
-   * Retrieves all keys from the cache with the specified prefix.
-   * @param prefix - The prefix to filter keys.
+   * Retrieves all keys from the cache with the specified pattern.
+   * @param pattern - The pattern to filter keys.
    * @returns An array of cache keys.
    */
-  async keys(prefix: string): Promise<string[]> {
-    prefix = this.normalizeKey(prefix);
+  async keys(pattern: string, hash?: string): Promise<string[]> {
+    pattern = this.normalizeKey(pattern);
     const start = performance.now();
-    const keys = await this.adapter.keys(prefix);
+    const keys = await this.adapter.keys(pattern, hash);
     const duration = performance.now() - start;
     this.telemetry.record("keys", duration, {
-      adapterName: this.adapter.getName(prefix),
+      adapterName: this.adapter.getName(pattern),
     });
     return keys;
   }

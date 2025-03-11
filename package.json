@@ -1,6 +1,6 @@
 {
   "name": "@nuvix/cache",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A flexible caching library with adapter support for different storage backends.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,8 +24,7 @@
   ],
   "author": "Nuvix",
   "license": "BSD-3-Clause",
-  "dependencies": {
-  },
+  "dependencies": {},
   "devDependencies": {
     "ioredis": "^5.6.0",
     "typescript": "^5.2.0",
@@ -38,5 +37,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

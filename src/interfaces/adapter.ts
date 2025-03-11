@@ -3,48 +3,48 @@ export interface CacheAdapter {
    * Retrieves a cached item by key.
    * @param key The cache key.
    * @param ttl Time-to-live in seconds.
-   * @param namespace Optional namespace identifier.
+   * @param hash Optional hash identifier.
    * @returns The cached value or null if not found.
    */
-  get<T = unknown>(key: string, namespace?: string): Promise<T | null>;
+  get<T = unknown>(key: string, hash?: string): Promise<T | null>;
 
   /**
    * Stores a value in the cache.
    * @param key The cache key.
    * @param value The data to store.
    * @param ttl Optional time-to-live in seconds.
-   * @param namespace Optional namespace identifier.
+   * @param hash Optional hash identifier.
    * @returns True if successful, otherwise false.
    */
   set(
     key: string,
     value: string | Record<string, unknown>,
     ttl?: number,
-    namespace?: string,
+    hash?: string,
   ): Promise<boolean>;
 
   /**
    * Retrieves a list of keys matching a pattern.
    * @param pattern The key pattern to match.
-   * @param namespace Optional namespace identifier.
+   * @param hash Optional hash identifier.
    * @returns An array of matching cache keys.
    */
-  keys(pattern: string, namespace?: string): Promise<string[]>;
+  keys(pattern: string, hash?: string): Promise<string[]>;
 
   /**
    * Deletes a cached item by key.
    * @param key The cache key.
-   * @param namespace Optional namespace identifier.
+   * @param hash Optional hash identifier.
    * @returns True if successful, otherwise false.
    */
-  delete(key: string, namespace?: string): Promise<boolean>;
+  delete(key: string, hash?: string): Promise<boolean>;
 
   /**
-   * Clears all cached data within a namespace or globally.
-   * @param namespace Optional namespace identifier.
+   * Clears all cached data within a hash or globally.
+   * @param hash Optional hash identifier.
    * @returns True if successful, otherwise false.
    */
-  clear(namespace?: string): Promise<boolean>;
+  clear(hash?: string): Promise<boolean>;
 
   /**
    * Checks if the cache connection is active.
@@ -69,8 +69,8 @@ export interface CacheAdapter {
    * Extends the TTL of an existing cache entry.
    * @param key The cache key.
    * @param ttl Time-to-live in seconds.
-   * @param namespace Optional namespace identifier.
+   * @param hash Optional hash identifier.
    * @returns True if TTL was updated, otherwise false.
    */
-  extendTTL(key: string, ttl: number, namespace?: string): Promise<boolean>;
+  extendTTL(key: string, ttl: number, hash?: string): Promise<boolean>;
 }

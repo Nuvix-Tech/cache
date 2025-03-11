@@ -22,8 +22,10 @@ export class Redis implements CacheAdapter {
     }
   }
 
-  private getKey(key: string, namespace?: string): string {
-    return `${namespace || this.namespace}:${key}`;
+  private getKey(key: string, hash?: string): string {
+    return hash
+      ? `${this.namespace}:${key}:${hash}`
+      : `${this.namespace}:${key}`;
   }
 
   private compress(data: string): Buffer {
@@ -34,8 +36,8 @@ export class Redis implements CacheAdapter {
     return zlib.inflateSync(data).toString();
   }
 
-  async get<T = unknown>(key: string, namespace?: string): Promise<T | null> {
-    const fullKey = this.getKey(key, namespace);
+  async get<T = unknown>(key: string, hash?: string): Promise<T | null> {
+    const fullKey = this.getKey(key, hash);
     const value = await this.client.getBuffer(fullKey);
 
     if (!value) return null;
@@ -50,9 +52,9 @@ export class Redis implements CacheAdapter {
     key: string,
     value: T,
     ttl?: number,
-    namespace?: string,
+    hash?: string,
   ): Promise<boolean> {
-    const fullKey = this.getKey(key, namespace);
+    const fullKey = this.getKey(key, hash);
     const serializedValue = JSON.stringify(value);
     const data = this.useCompression
       ? this.compress(serializedValue)
@@ -67,9 +69,9 @@ export class Redis implements CacheAdapter {
 
   async mget<T = unknown>(
     keys: string[],
-    namespace?: string,
+    hash?: string,
   ): Promise<(T | null)[]> {
-    const fullKeys = keys.map((key) => this.getKey(key, namespace));
+    const fullKeys = keys.map((key) => this.getKey(key, hash));
     const values = await this.client.mgetBuffer(...fullKeys);
 
     return values.map((value) =>
@@ -83,13 +85,13 @@ export class Redis implements CacheAdapter {
 
   async mset(
     data: Record<string, unknown>,
-    namespace?: string,
+    hash?: string,
     ttl?: number,
   ): Promise<boolean> {
     const pipeline = this.client.pipeline();
 
     for (const [key, value] of Object.entries(data)) {
-      const fullKey = this.getKey(key, namespace);
+      const fullKey = this.getKey(key, hash);
       const serializedValue = JSON.stringify(value);
       const data = this.useCompression
         ? this.compress(serializedValue)
@@ -105,18 +107,18 @@ export class Redis implements CacheAdapter {
     return true;
   }
 
-  async keys(pattern: string, namespace?: string): Promise<string[]> {
-    return await this.client.keys(this.getKey(pattern, namespace));
+  async keys(pattern: string, hash?: string): Promise<string[]> {
+    return await this.client.keys(this.getKey(pattern, hash));
   }
 
-  async delete(key: string, namespace?: string): Promise<boolean> {
-    const fullKey = this.getKey(key, namespace);
+  async delete(key: string, hash?: string): Promise<boolean> {
+    const fullKey = this.getKey(key, hash);
     return (await this.client.del(fullKey)) > 0;
   }
 
-  async deleteMany(keys: string[], namespace?: string): Promise<boolean> {
+  async deleteMany(keys: string[], hash?: string): Promise<boolean> {
     if (keys.length === 0) return false;
-    const fullKeys = keys.map((key) => this.getKey(key, namespace));
+    const fullKeys = keys.map((key) => this.getKey(key, hash));
 
     const luaScript = `
       for i=1,#KEYS do
@@ -130,8 +132,8 @@ export class Redis implements CacheAdapter {
     );
   }
 
-  async clear(namespace?: string): Promise<boolean> {
-    const keys = await this.keys("*", namespace);
+  async clear(hash?: string): Promise<boolean> {
+    const keys = await this.keys("*", hash);
     if (keys.length > 0) {
       await this.client.del(...keys);
     }
@@ -151,22 +153,18 @@ export class Redis implements CacheAdapter {
     return (await this.client.dbsize()) || 0;
   }
 
-  async expire(key: string, ttl: number, namespace?: string): Promise<boolean> {
-    const fullKey = this.getKey(key, namespace);
+  async expire(key: string, ttl: number, hash?: string): Promise<boolean> {
+    const fullKey = this.getKey(key, hash);
     return (await this.client.expire(fullKey, ttl)) === 1;
   }
 
-  async ttl(key: string, namespace?: string): Promise<number> {
-    const fullKey = this.getKey(key, namespace);
+  async ttl(key: string, hash?: string): Promise<number> {
+    const fullKey = this.getKey(key, hash);
     return await this.client.ttl(fullKey);
   }
 
-  async extendTTL(
-    key: string,
-    ttl: number,
-    namespace?: string,
-  ): Promise<boolean> {
-    const fullKey = this.getKey(key, namespace);
+  async extendTTL(key: string, ttl: number, hash?: string): Promise<boolean> {
+    const fullKey = this.getKey(key, hash);
     const currentTTL = await this.client.ttl(fullKey);
 
     if (currentTTL > 0) {
