@@ -16,9 +16,9 @@ export interface CacheAdapter {
    * @param hash Optional hash identifier.
    * @returns True if successful, otherwise false.
    */
-  set(
+  set<T = unknown>(
     key: string,
-    value: string | Record<string, unknown>,
+    value: T,
     ttl?: number,
     hash?: string,
   ): Promise<boolean>;
@@ -73,4 +73,14 @@ export interface CacheAdapter {
    * @returns True if TTL was updated, otherwise false.
    */
   extendTTL(key: string, ttl: number, hash?: string): Promise<boolean>;
+
+  close(): Promise<void>;
+
+  mget<T = unknown>(keys: string[], hash?: string): Promise<(T | null)[]>;
+
+  mset<T = unknown>(
+    data: Record<string, T>,
+    hash?: string,
+    ttl?: number,
+  ): Promise<boolean>;
 }

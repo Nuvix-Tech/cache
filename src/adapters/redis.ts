@@ -1,184 +1,227 @@
+import IORedis from "ioredis";
+import { EventEmitter } from "events";
 import { CacheAdapter } from "../interfaces/adapter";
-import { Redis as IoRedis, RedisOptions } from "ioredis";
-import zlib from "zlib";
 
-export class Redis implements CacheAdapter {
-  private client: IoRedis;
-  private readonly namespace: string;
-  private readonly useCompression: boolean;
+interface RedisOptions {
+  host?: string;
+  port?: number;
+  password?: string;
+  tls?: boolean;
+  namespace?: string;
+}
 
-  constructor(
-    redisInstanceOrOptions: IoRedis | RedisOptions,
-    namespace = "cache",
-    useCompression = false,
-  ) {
-    this.namespace = namespace;
-    this.useCompression = useCompression;
+export class RedisAdapter implements CacheAdapter {
+  private client: IORedis;
+  private namespace: string;
+  private eventEmitter: EventEmitter;
 
-    if (redisInstanceOrOptions instanceof IoRedis) {
-      this.client = redisInstanceOrOptions;
+  constructor(options: RedisOptions = {}) {
+    const { tls, ...redisOptions } = options;
+    this.namespace = options.namespace ?? "cache";
+    this.eventEmitter = new EventEmitter();
+
+    if (tls) {
+      this.client = new IORedis({
+        ...redisOptions,
+        tls: { rejectUnauthorized: false },
+      });
     } else {
-      this.client = new IoRedis(redisInstanceOrOptions);
+      this.client = new IORedis(redisOptions);
     }
+
+    this.client.on("error", (error) => {
+      this.eventEmitter.emit("error", error);
+    });
   }
 
   private getKey(key: string, hash?: string): string {
-    return hash
-      ? `${this.namespace}:${key}:${hash}`
-      : `${this.namespace}:${key}`;
+    return hash ? `${this.namespace}:${key}:${hash}` : `${this.namespace}:${key}`;
   }
 
-  private compress(data: string): Buffer {
-    return zlib.deflateSync(data);
-  }
-
-  private decompress(data: Buffer): string {
-    return zlib.inflateSync(data).toString();
-  }
-
-  async get<T = unknown>(key: string, hash?: string): Promise<T | null> {
-    const fullKey = this.getKey(key, hash);
-    const value = await this.client.getBuffer(fullKey);
-
-    if (!value) return null;
-
-    const decompressed = this.useCompression
-      ? this.decompress(value)
-      : value.toString();
-    return JSON.parse(decompressed) as T;
-  }
-
-  async set<T = unknown>(
-    key: string,
-    value: T,
-    ttl?: number,
-    hash?: string,
-  ): Promise<boolean> {
-    const fullKey = this.getKey(key, hash);
-    const serializedValue = JSON.stringify(value);
-    const data = this.useCompression
-      ? this.compress(serializedValue)
-      : serializedValue;
-
-    if (ttl) {
-      return (await this.client.set(fullKey, data, "EX", ttl)) === "OK";
-    } else {
-      return (await this.client.set(fullKey, data)) === "OK";
-    }
-  }
-
-  async mget<T = unknown>(
-    keys: string[],
-    hash?: string,
-  ): Promise<(T | null)[]> {
-    const fullKeys = keys.map((key) => this.getKey(key, hash));
-    const values = await this.client.mgetBuffer(...fullKeys);
-
-    return values.map((value) =>
-      value
-        ? (JSON.parse(
-            this.useCompression ? this.decompress(value) : value.toString(),
-          ) as T)
-        : null,
-    );
-  }
-
-  async mset(
-    data: Record<string, unknown>,
-    hash?: string,
-    ttl?: number,
-  ): Promise<boolean> {
-    const pipeline = this.client.pipeline();
-
-    for (const [key, value] of Object.entries(data)) {
+  async set(key: string, value: any, ttl?: number, hash?: string): Promise<boolean> {
+    try {
       const fullKey = this.getKey(key, hash);
       const serializedValue = JSON.stringify(value);
-      const data = this.useCompression
-        ? this.compress(serializedValue)
-        : serializedValue;
       if (ttl) {
-        pipeline.set(fullKey, data, "EX", ttl);
+        const result = await this.client.set(fullKey, serializedValue, "EX", ttl);
+        if (result !== "OK") {
+          throw new Error("Failed to set value with TTL");
+        }
       } else {
-        pipeline.set(fullKey, data);
+        const result = await this.client.set(fullKey, serializedValue);
+        if (result !== "OK") {
+          throw new Error("Failed to set value");
+        }
       }
+      return true;
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return false;
     }
-
-    await pipeline.exec();
-    return true;
   }
 
-  async keys(pattern: string, hash?: string): Promise<string[]> {
-    return await this.client.keys(this.getKey(pattern, hash));
+  async get(key: string, hash?: string): Promise<any | null> {
+    try {
+      const fullKey = this.getKey(key, hash);
+      const value = await this.client.get(fullKey);
+      if (!value) return null;
+      return JSON.parse(value);
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return null;
+    }
   }
 
   async delete(key: string, hash?: string): Promise<boolean> {
-    const fullKey = this.getKey(key, hash);
-    return (await this.client.del(fullKey)) > 0;
+    try {
+      const fullKey = this.getKey(key, hash);
+      await this.client.del(fullKey);
+      return true;
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return false;
+    }
+  }
+
+  async mget(keys: string[], hash?: string): Promise<(any | null)[]> {
+    try {
+      const fullKeys = keys.map((key) => this.getKey(key, hash));
+      const values = await this.client.mget(...fullKeys);
+
+      return values.map((value) => {
+        if (!value) return null;
+        try {
+          return JSON.parse(value) as any;
+        } catch (error) {
+          this.eventEmitter.emit("error", error);
+          return null;
+        }
+      });
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return new Array(keys.length).fill(null);
+    }
+  }
+
+  async mset(data: Record<string, any>, hash?: string, ttl?: number): Promise<boolean> {
+    try {
+      const pipeline = this.client.pipeline();
+
+      for (const [key, value] of Object.entries(data)) {
+        const fullKey = this.getKey(key, hash);
+        const serializedValue = JSON.stringify(value);
+
+        if (ttl) {
+          pipeline.set(fullKey, serializedValue, "EX", ttl);
+        } else {
+          pipeline.set(fullKey, serializedValue);
+        }
+      }
+
+      const results = await pipeline.exec();
+      if (!results) return false;
+      return results.every(([err, result]) => !err && result === "OK");
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return false;
+    }
   }
 
   async deleteMany(keys: string[], hash?: string): Promise<boolean> {
-    if (keys.length === 0) return false;
-    const fullKeys = keys.map((key) => this.getKey(key, hash));
+    try {
+      const fullKeys = keys.map((key) => this.getKey(key, hash));
+      await this.client.del(...fullKeys);
+      return true;
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return false;
+    }
+  }
 
-    const luaScript = `
-      for i=1,#KEYS do
-        redis.call("DEL", KEYS[i])
-      end
-      return 1
-    `;
+  async keys(pattern: string, hash?: string): Promise<string[]> {
+    try {
+      if (hash) {
+        const fullPattern = `${this.namespace}:${pattern}:${hash}`;
+        return await this.client.keys(fullPattern);
+      } else {
+        const allKeys = await this.client.keys(`${this.namespace}:${pattern}`);
+        return allKeys.filter(key => key.split(':').length === 2);
+      }
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return [];
+    }
+  }
 
-    return (
-      (await this.client.eval(luaScript, fullKeys.length, ...fullKeys)) === 1
-    );
+  async ttl(key: string, hash?: string): Promise<number> {
+    try {
+      const fullKey = this.getKey(key, hash);
+      return await this.client.ttl(fullKey);
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return -1;
+    }
+  }
+
+  async extendTTL(key: string, ttl: number, hash?: string): Promise<boolean> {
+    try {
+      const fullKey = this.getKey(key, hash);
+      const exists = await this.client.exists(fullKey);
+      if (!exists) return false;
+      const result = await this.client.expire(fullKey, ttl);
+      if (result !== 1) {
+        throw new Error("Failed to extend TTL");
+      }
+      return true;
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return false;
+    }
   }
 
   async clear(hash?: string): Promise<boolean> {
-    const keys = await this.keys("*", hash);
-    if (keys.length > 0) {
-      await this.client.del(...keys);
+    try {
+      const pattern = hash ? `${this.namespace}:*:${hash}` : `${this.namespace}:*`;
+      const keys = await this.client.keys(pattern);
+      if (keys.length > 0) {
+        await this.client.del(...keys);
+      }
+      return true;
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return false;
     }
-    return true;
   }
 
   async isAlive(): Promise<boolean> {
     try {
       await this.client.ping();
       return true;
-    } catch {
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
       return false;
     }
   }
 
   async size(): Promise<number> {
-    return (await this.client.dbsize()) || 0;
-  }
-
-  async expire(key: string, ttl: number, hash?: string): Promise<boolean> {
-    const fullKey = this.getKey(key, hash);
-    return (await this.client.expire(fullKey, ttl)) === 1;
-  }
-
-  async ttl(key: string, hash?: string): Promise<number> {
-    const fullKey = this.getKey(key, hash);
-    return await this.client.ttl(fullKey);
-  }
-
-  async extendTTL(key: string, ttl: number, hash?: string): Promise<boolean> {
-    const fullKey = this.getKey(key, hash);
-    const currentTTL = await this.client.ttl(fullKey);
-
-    if (currentTTL > 0) {
-      return (await this.client.expire(fullKey, currentTTL + ttl)) === 1;
+    try {
+      const keys = await this.client.keys(`${this.namespace}:*`);
+      return keys.length;
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return 0;
     }
-
-    return false;
-  }
-
-  getName(): string {
-    return "RedisAdapter";
   }
 
   async close(): Promise<void> {
-    await this.client.quit();
+    try {
+      await this.client.quit();
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+    }
+  }
+
+  getName(): string {
+    return "redis";
   }
 }
