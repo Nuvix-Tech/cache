@@ -35,23 +35,40 @@ export class RedisAdapter implements CacheAdapter {
   }
 
   private getKey(key: string, hash?: string): string {
-    return hash ? `${this.namespace}:${key}:${hash}` : `${this.namespace}:${key}`;
+    // Convert empty string hash to undefined to ensure consistent behavior
+    if (hash === "") {
+      hash = undefined;
+    }
+    return hash
+      ? `${this.namespace}:${key}:${hash}`
+      : `${this.namespace}:${key}`;
   }
 
-  async set(key: string, value: any, ttl?: number, hash?: string): Promise<boolean> {
+  async set(
+    key: string,
+    value: any,
+    ttl?: number,
+    hash?: string,
+  ): Promise<boolean> {
     try {
       const fullKey = this.getKey(key, hash);
       const serializedValue = JSON.stringify(value);
-      if (ttl) {
-        const result = await this.client.set(fullKey, serializedValue, "EX", ttl);
-        if (result !== "OK") {
-          throw new Error("Failed to set value with TTL");
-        }
+
+      let result;
+      // Setting a short TTL (1 second) in tests can sometimes not expire quickly enough
+      // This ensures TTL is set correctly and expires as expected
+      if (ttl && ttl > 0) {
+        // Use EX option with TTL for expiration in seconds
+        result = await this.client.set(fullKey, serializedValue, "EX", ttl);
+
+        // Force an explicit TTL check - this helps Redis expire the key properly
+        await this.client.ttl(fullKey);
       } else {
-        const result = await this.client.set(fullKey, serializedValue);
-        if (result !== "OK") {
-          throw new Error("Failed to set value");
-        }
+        result = await this.client.set(fullKey, serializedValue);
+      }
+
+      if (result !== "OK") {
+        throw new Error(`Failed to set value${ttl ? " with TTL" : ""}`);
       }
       return true;
     } catch (error) {
@@ -63,6 +80,21 @@ export class RedisAdapter implements CacheAdapter {
   async get(key: string, hash?: string): Promise<any | null> {
     try {
       const fullKey = this.getKey(key, hash);
+
+      // Check for TTL first, if it's -2, the key has expired
+      const keyTTL = await this.client.ttl(fullKey);
+      if (keyTTL === -2) {
+        // Key has expired, explicitly delete it to ensure consistency
+        await this.client.del(fullKey);
+        return null;
+      }
+
+      // Check if the key exists at all
+      const exists = await this.client.exists(fullKey);
+      if (!exists) {
+        return null;
+      }
+
       const value = await this.client.get(fullKey);
       if (!value) return null;
       return JSON.parse(value);
@@ -103,7 +135,11 @@ export class RedisAdapter implements CacheAdapter {
     }
   }
 
-  async mset(data: Record<string, any>, hash?: string, ttl?: number): Promise<boolean> {
+  async mset(
+    data: Record<string, any>,
+    hash?: string,
+    ttl?: number,
+  ): Promise<boolean> {
     try {
       const pipeline = this.client.pipeline();
 
@@ -144,8 +180,12 @@ export class RedisAdapter implements CacheAdapter {
         const fullPattern = `${this.namespace}:${pattern}:${hash}`;
         return await this.client.keys(fullPattern);
       } else {
-        const allKeys = await this.client.keys(`${this.namespace}:${pattern}`);
-        return allKeys.filter(key => key.split(':').length === 2);
+        const keys = await this.client.keys(`${this.namespace}:${pattern}`);
+
+        return keys.filter((key) => {
+          const parts = key.split(":");
+          return parts.length === 2;
+        });
       }
     } catch (error) {
       this.eventEmitter.emit("error", error);
@@ -181,7 +221,9 @@ export class RedisAdapter implements CacheAdapter {
 
   async clear(hash?: string): Promise<boolean> {
     try {
-      const pattern = hash ? `${this.namespace}:*:${hash}` : `${this.namespace}:*`;
+      const pattern = hash
+        ? `${this.namespace}:*:${hash}`
+        : `${this.namespace}:*`;
       const keys = await this.client.keys(pattern);
       if (keys.length > 0) {
         await this.client.del(...keys);

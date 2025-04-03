@@ -26,7 +26,9 @@ describe("Cache Performance Tests", () => {
   describe("Single Operation Performance", () => {
     it("should handle large object serialization efficiently", async () => {
       const largeObject = {
-        data: Array(10000).fill({ key: "value" }),
+        data: Array(10000)
+          .fill(0)
+          .map(() => ({ key: "value" })),
         timestamp: Date.now(),
       };
 

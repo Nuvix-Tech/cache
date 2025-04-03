@@ -74,7 +74,7 @@ const user = await cache.get("user:123");
 await cache.mset({
   "user:1": { name: "John" },
   "user:2": { name: "Jane" },
-  "user:3": { name: "Bob" }
+  "user:3": { name: "Bob" },
 });
 
 // Get multiple values
@@ -105,21 +105,21 @@ const isAlive = await cache.ping();
 
 ```ts
 interface RedisOptions {
-  host?: string;              // Redis host (default: "localhost")
-  port?: number;              // Redis port (default: 6379)
-  db?: number;                // Redis database (default: 0)
-  useCompression?: boolean;   // Enable compression (default: false)
+  host?: string; // Redis host (default: "localhost")
+  port?: number; // Redis port (default: 6379)
+  db?: number; // Redis database (default: 0)
+  useCompression?: boolean; // Enable compression (default: false)
   compressionThreshold?: number; // Minimum size for compression (default: 1024)
-  maxKeyLength?: number;      // Maximum key length (default: 255)
-  maxValueSize?: number;      // Maximum value size (default: 512KB)
-  namespace?: string;         // Key namespace (default: "cache")
-  tls?: boolean | object;     // TLS configuration
+  maxKeyLength?: number; // Maximum key length (default: 255)
+  maxValueSize?: number; // Maximum value size (default: 512KB)
+  namespace?: string; // Key namespace (default: "cache")
+  tls?: boolean | object; // TLS configuration
   maxRetriesPerRequest?: number; // Maximum retries (default: 3)
   retryStrategy?: (times: number) => number; // Custom retry strategy
-  connectTimeout?: number;    // Connection timeout (default: 10000ms)
-  commandTimeout?: number;    // Command timeout (default: 5000ms)
-  keepAlive?: number;        // Keep-alive interval (default: 30000ms)
-  family?: number;           // IP family (default: 4)
+  connectTimeout?: number; // Connection timeout (default: 10000ms)
+  commandTimeout?: number; // Command timeout (default: 5000ms)
+  keepAlive?: number; // Keep-alive interval (default: 30000ms)
+  family?: number; // IP family (default: 4)
 }
 ```
 
@@ -127,11 +127,11 @@ interface RedisOptions {
 
 ```ts
 interface CacheOptions {
-  maxRetries?: number;        // Maximum retries (default: 3)
-  retryDelay?: number;        // Retry delay in ms (default: 100)
-  defaultTTL?: number;        // Default TTL in seconds (default: 3600)
-  maxKeyLength?: number;      // Maximum key length (default: 512)
-  maxValueSize?: number;      // Maximum value size (default: 512MB)
+  maxRetries?: number; // Maximum retries (default: 3)
+  retryDelay?: number; // Retry delay in ms (default: 100)
+  defaultTTL?: number; // Default TTL in seconds (default: 3600)
+  maxKeyLength?: number; // Maximum key length (default: 512)
+  maxValueSize?: number; // Maximum value size (default: 512MB)
 }
 ```
 

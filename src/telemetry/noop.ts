@@ -16,4 +16,4 @@ export class NoOpTelemetry implements Telemetry {
   recordMiss(operation: string): void {
     // No-op
   }
-} 
+}

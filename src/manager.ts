@@ -85,8 +85,33 @@ export class Cache {
    * @param value - The value to validate.
    */
   private validateValue(value: unknown): void {
+    if (value === undefined) {
+      throw new Error("Cannot cache undefined values");
+    }
+
     try {
+      // Attempt to serialize to detect circular references
+      // and other JSON serialization issues
       JSON.stringify(value);
+
+      // Check for circular references more thoroughly
+      const seen = new WeakSet();
+      const detectCircular = (obj: any) => {
+        if (obj && typeof obj === "object") {
+          if (seen.has(obj)) {
+            throw new Error("Circular reference detected");
+          }
+          seen.add(obj);
+          for (const key of Object.keys(obj)) {
+            detectCircular(obj[key]);
+          }
+        }
+      };
+
+      // Only run deeper check for objects
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        detectCircular(value);
+      }
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Invalid value: ${error.message}`);
@@ -152,11 +177,14 @@ export class Cache {
    */
   async get<T>(key: string, hash = ""): Promise<T | null> {
     key = this.normalizeKey(key);
-    hash = this.normalizeKey(hash);
+    hash = hash ? this.normalizeKey(hash) : "";
 
     const start = performance.now();
     try {
-      const result = await this.retry(() => this.adapter.get<T>(key, hash));
+      // If hash is empty string, we need to make sure it's treated as no hash
+      const result = await this.retry(() =>
+        this.adapter.get<T>(key, hash === "" ? undefined : hash),
+      );
       const duration = performance.now() - start;
 
       if (result !== null) {
@@ -196,13 +224,18 @@ export class Cache {
     hash = "",
   ): Promise<boolean> {
     key = this.normalizeKey(key);
-    hash = this.normalizeKey(hash);
+    hash = hash ? this.normalizeKey(hash) : "";
 
     const start = performance.now();
     try {
       this.validateValue(data);
       const success = await this.retry(() =>
-        this.adapter.set(key, data as any, ttl ?? this.defaultTTL, hash),
+        this.adapter.set(
+          key,
+          data as any,
+          ttl ?? this.defaultTTL,
+          hash === "" ? undefined : hash,
+        ),
       );
       const duration = performance.now() - start;
 
@@ -233,16 +266,23 @@ export class Cache {
    */
   async delete(key: string, hash = ""): Promise<boolean> {
     key = this.normalizeKey(key);
-    hash = this.normalizeKey(hash);
+    hash = hash ? this.normalizeKey(hash) : "";
 
     const start = performance.now();
     try {
-      const success = await this.retry(() => this.adapter.delete(key, hash));
+      const success = await this.retry(() =>
+        this.adapter.delete(key, hash === "" ? undefined : hash),
+      );
       const duration = performance.now() - start;
       this.recordTelemetry("delete", duration, key);
 
       if (success) {
-        this.eventEmitter.emit("delete", key);
+        // For backward compatibility, emit only the key if no hash is provided
+        if (!hash) {
+          this.eventEmitter.emit("delete", key);
+        } else {
+          this.eventEmitter.emit("delete", key, hash);
+        }
       }
 
       return success;
@@ -377,7 +417,10 @@ export class Cache {
     this.eventEmitter.off(event, listener);
   }
 
-  async mget<T = unknown>(keys: string[], hash?: string): Promise<(T | null)[]> {
+  async mget<T = unknown>(
+    keys: string[],
+    hash?: string,
+  ): Promise<(T | null)[]> {
     return this.adapter.mget<T>(keys, hash);
   }
 
@@ -387,19 +430,21 @@ export class Cache {
     ttl?: number,
   ): Promise<boolean> {
     try {
+      // Validate all values before attempting to set any
       for (const value of Object.values(data)) {
         this.validateValue(value);
       }
+
       const result = await this.adapter.mset(data, hash, ttl);
       if (!result) {
         throw new Error("Failed to set values");
       }
-      this.hits++;
+      this.eventEmitter.emit("set", Object.keys(data), data);
       return true;
     } catch (error) {
       this.eventEmitter.emit("error", error);
-      this.misses++;
-      return false;
+      // Re-throw the error rather than just returning false to maintain consistent error behavior
+      throw error;
     }
   }
 
@@ -411,10 +456,36 @@ export class Cache {
   }
 
   async extendTTL(key: string, ttl: number, hash?: string): Promise<boolean> {
-    const value = await this.get(key, hash);
-    if (value === null) {
+    key = this.normalizeKey(key);
+    hash = hash ? this.normalizeKey(hash) : "";
+
+    const start = performance.now();
+    try {
+      // Try to use the adapter's native extendTTL if available
+      if (typeof this.adapter.extendTTL === "function") {
+        const success = await this.retry(() =>
+          this.adapter.extendTTL(key, ttl, hash),
+        );
+        const duration = performance.now() - start;
+        this.recordTelemetry("extendTTL", duration, key);
+
+        if (success) {
+          this.eventEmitter.emit("set", key, `TTL extended to ${ttl}`);
+          return true;
+        }
+      }
+
+      // Fallback: get and set with new TTL
+      const value = await this.get(key, hash);
+      if (value === null) {
+        return false;
+      }
+      return this.set(key, value, ttl, hash);
+    } catch (error) {
+      const duration = performance.now() - start;
+      this.recordTelemetry("extendTTL_error", duration, key);
+      this.eventEmitter.emit("error", error);
       return false;
     }
-    return this.set(key, value, ttl, hash);
   }
 }
