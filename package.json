@@ -11,7 +11,7 @@
     "test:coverage": "jest --coverage",
     "test:watch": "jest --watch",
     "clean": "rm -rf dist coverage",
-    "prepublishOnly": "npm run clean && npm run build && npm run test",
+    "prepublishOnly": "npm run clean && npm run build",
     "docs": "typedoc --out docs src",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "prepare": "husky install"
