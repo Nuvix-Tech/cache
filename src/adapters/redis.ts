@@ -40,7 +40,7 @@ export class RedisAdapter implements CacheAdapter {
       hash = undefined;
     }
     return hash
-      ? `${this.namespace}:${key}:${hash}`
+      ? `${this.namespace}:${key}::${hash}`
       : `${this.namespace}:${key}`;
   }
 
@@ -107,8 +107,8 @@ export class RedisAdapter implements CacheAdapter {
   async delete(key: string, hash?: string): Promise<boolean> {
     try {
       const fullKey = this.getKey(key, hash);
-      await this.client.del(fullKey);
-      return true;
+      const res = await this.client.del(fullKey);
+      return res === 1;
     } catch (error) {
       this.eventEmitter.emit("error", error);
       return false;
@@ -177,15 +177,12 @@ export class RedisAdapter implements CacheAdapter {
   async keys(pattern: string, hash?: string): Promise<string[]> {
     try {
       if (hash) {
-        const fullPattern = `${this.namespace}:${pattern}:${hash}`;
+        // Use :: as the separator to match the format used in getKey
+        const fullPattern = `${this.namespace}:${pattern}::${hash}`;
         return await this.client.keys(fullPattern);
       } else {
-        const keys = await this.client.keys(`${this.namespace}:${pattern}`);
-
-        return keys.filter((key) => {
-          const parts = key.split(":");
-          return parts.length === 2;
-        });
+        // Return raw keys without processing them
+        return await this.client.keys(`${this.namespace}:${pattern}`);
       }
     } catch (error) {
       this.eventEmitter.emit("error", error);
@@ -222,7 +219,7 @@ export class RedisAdapter implements CacheAdapter {
   async clear(hash?: string): Promise<boolean> {
     try {
       const pattern = hash
-        ? `${this.namespace}:*:${hash}`
+        ? `${this.namespace}:*::${hash}`
         : `${this.namespace}:*`;
       const keys = await this.client.keys(pattern);
       if (keys.length > 0) {

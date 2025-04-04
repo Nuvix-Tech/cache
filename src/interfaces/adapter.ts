@@ -40,6 +40,14 @@ export interface CacheAdapter {
   delete(key: string, hash?: string): Promise<boolean>;
 
   /**
+   * Deletes multiple cached items by their keys.
+   * @param keys The array of cache keys.
+   * @param hash Optional hash identifier.
+   * @returns True if operation completes successfully, otherwise false.
+   */
+  deleteMany(keys: string[], hash?: string): Promise<boolean>;
+
+  /**
    * Clears all cached data within a hash or globally.
    * @param hash Optional hash identifier.
    * @returns True if successful, otherwise false.

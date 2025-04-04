@@ -449,10 +449,20 @@ export class Cache {
   }
 
   async deleteMany(keys: string[], hash?: string): Promise<boolean> {
-    const results = await Promise.all(
-      keys.map((key) => this.delete(key, hash)),
-    );
-    return results.every((result) => result);
+    try {
+      // Normalize keys
+      const normalizedKeys = keys.map((key) => this.normalizeKey(key));
+      const normalizedHash = hash ? this.normalizeKey(hash) : undefined;
+
+      // Use the adapter's deleteMany directly instead of calling delete for each key
+      // This is more efficient and follows the Redis adapter's behavior
+      return await this.retry(() =>
+        this.adapter.deleteMany(normalizedKeys, normalizedHash),
+      );
+    } catch (error) {
+      this.eventEmitter.emit("error", error);
+      return false;
+    }
   }
 
   async extendTTL(key: string, ttl: number, hash?: string): Promise<boolean> {
