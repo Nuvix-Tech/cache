@@ -80,23 +80,11 @@ export class RedisAdapter implements CacheAdapter {
   async get(key: string, hash?: string): Promise<any | null> {
     try {
       const fullKey = this.getKey(key, hash);
-
-      // Check for TTL first, if it's -2, the key has expired
-      const keyTTL = await this.client.ttl(fullKey);
-      if (keyTTL === -2) {
-        // Key has expired, explicitly delete it to ensure consistency
-        await this.client.del(fullKey);
-        return null;
-      }
-
-      // Check if the key exists at all
-      const exists = await this.client.exists(fullKey);
-      if (!exists) {
-        return null;
-      }
-
+      
+      // Directly get the value without extra checks
       const value = await this.client.get(fullKey);
       if (!value) return null;
+      
       return JSON.parse(value);
     } catch (error) {
       this.eventEmitter.emit("error", error);
@@ -106,8 +94,12 @@ export class RedisAdapter implements CacheAdapter {
 
   async delete(key: string, hash?: string): Promise<boolean> {
     try {
-      const fullKey = this.getKey(key, hash);
+      const fullKey = key.startsWith(`${this.namespace}:`)
+        ? key
+        : this.getKey(key, hash);
       const res = await this.client.del(fullKey);
+      // Only return true if key existed and was deleted (res === 1)
+      // Return false if the key didn't exist (res === 0)
       return res === 1;
     } catch (error) {
       this.eventEmitter.emit("error", error);
@@ -165,9 +157,16 @@ export class RedisAdapter implements CacheAdapter {
 
   async deleteMany(keys: string[], hash?: string): Promise<boolean> {
     try {
-      const fullKeys = keys.map((key) => this.getKey(key, hash));
-      await this.client.del(...fullKeys);
-      return true;
+      const fullKeys = keys.map((key) => {
+        // Check if key already has namespace prefix to avoid double namespacing
+        if (key.startsWith(`${this.namespace}:`)) {
+          return key; // Key already has namespace prefix
+        }
+        return this.getKey(key, hash); // Add namespace prefix
+      });
+
+      const deletes = await this.client.del(...fullKeys);
+      return deletes > 0;
     } catch (error) {
       this.eventEmitter.emit("error", error);
       return false;
