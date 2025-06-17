@@ -1,17 +1,23 @@
 # @nuvix/cache
 
-A high-performance, flexible caching library with multiple adapter support including Redis, Memcached, and in-memory storage. Built with TypeScript for type safety and optimal performance, with full ESM and CommonJS support.
+A high-performance, enterprise-grade caching library with advanced features including namespace support, compression, tagging, batch operations, and comprehensive telemetry integration. Built with TypeScript for maximum type safety and supports both ESM and CommonJS.
 
 ## ✨ Features
 
-- **🚀 Multiple Adapters**: Redis, Memcached, Memory, and None (no-op) adapters
-- **📦 Dual Module Support**: Full ESM and CommonJS compatibility
+- **🚀 Multiple Adapters**: Redis (enhanced), Memcached, Memory, and None (no-op) adapters
+- **📦 Dual Module Support**: Full ESM and CommonJS compatibility with tree-shaking
 - **🔧 TypeScript First**: Complete type safety with comprehensive type definitions
-- **📊 Telemetry Integration**: Built-in integration with `@nuvix/telemetry` for monitoring
-- **⚡ Performance Optimized**: Efficient serialization and storage mechanisms
-- **🎯 Simple API**: Consistent interface across all adapters
-- **🔄 TTL Support**: Time-to-live functionality for automatic expiration
-- **🛡️ Error Resilience**: Graceful error handling and fallback mechanisms
+- **🏷️ Namespace Support**: Organize cache entries with namespaces for better isolation
+- **🏷️ Tag-based Caching**: Group and invalidate related cache entries using tags
+- **📊 Advanced Operations**: Batch operations, atomic transactions, and pipelines
+- **🗜️ Compression**: Built-in gzip compression with configurable thresholds
+- **📈 Telemetry Integration**: Built-in integration with `@nuvix/telemetry` for monitoring
+- **⚡ Performance Optimized**: Efficient serialization, pipelining, and memory management
+- **🎯 Modern & Legacy APIs**: Clean modern API with backward compatibility
+- **🔄 TTL Support**: Flexible time-to-live functionality with per-key expiration
+- **🛡️ Error Resilience**: Comprehensive error handling and graceful degradation
+- **🔢 Atomic Operations**: Increment/decrement operations with Redis
+- **🔍 Pattern Matching**: Advanced key discovery and pattern-based operations
 
 ## 📋 Installation
 
@@ -31,7 +37,7 @@ bun add @nuvix/cache
 Install the required dependencies for your chosen adapter:
 
 ```bash
-# For Redis adapter
+# For Redis adapter (recommended)
 npm install ioredis
 # or
 npm install redis
@@ -56,95 +62,153 @@ const { Cache, Redis, Memory } = require('@nuvix/cache');
 const { Redis } = require('@nuvix/cache/adapters/redis');
 ```
 
-### Basic Usage
-
-```typescript
-import { Cache } from '@nuvix/cache';
-import { Memory } from '@nuvix/cache/adapters/memory';
-
-// Create cache with memory adapter
-const memoryAdapter = new Memory();
-const cache = new Cache(memoryAdapter);
-
-// Basic operations
-await cache.save('user:123', { name: 'John Doe', age: 30 });
-const user = await cache.load('user:123', 3600); // TTL: 1 hour
-await cache.purge('user:123');
-```
-
-## 🎯 Usage Examples
-
-### Redis Adapter
+### Basic Usage with Enhanced Redis Adapter
 
 ```typescript
 import { Cache } from '@nuvix/cache';
 import { Redis } from '@nuvix/cache/adapters/redis';
 import IORedis from 'ioredis';
 
-// Create Redis client
-const redisClient = new IORedis({
+// Create enhanced Redis adapter with namespace and compression
+const redisAdapter = new Redis({
   host: 'localhost',
   port: 6379,
-  retryDelayOnFailover: 100,
+  namespace: 'myapp',
+  defaultTTL: 3600,
+  enableCompression: true,
+  compressionThreshold: 1024,
+  keyPrefix: 'cache:',
+  maxKeyLength: 250,
+  maxValueSize: 512 * 1024 // 512KB
 });
 
-// Create Redis adapter and cache
-const redisAdapter = new Redis(redisClient);
 const cache = new Cache(redisAdapter);
 
-// Use the cache
-await cache.save('product:456', {
-  id: 456,
-  name: 'Awesome Product',
-  price: 99.99
+// Set default namespace
+cache.setDefaultNamespace('users');
+
+// Modern API with advanced features
+await cache.set('profile:123', { 
+  name: 'John Doe', 
+  email: 'john@example.com' 
+}, {
+  ttl: 1800, // 30 minutes
+  tags: ['user', 'profile'],
+  metadata: { source: 'database', version: 1 }
 });
 
-const product = await cache.load('product:456', 1800); // 30 minutes TTL
-console.log(product); // { id: 456, name: 'Awesome Product', price: 99.99 }
+const profile = await cache.get('profile:123');
+console.log(profile); // { name: 'John Doe', email: 'john@example.com' }
 ```
 
-### Memory Adapter
+## 🎯 Advanced Usage Examples
+
+### Namespace Management
 
 ```typescript
-import { Cache } from '@nuvix/cache';
-import { Memory } from '@nuvix/cache/adapters/memory';
+// Set default namespace for all operations
+cache.setDefaultNamespace('session');
 
-const memoryAdapter = new Memory();
-const cache = new Cache(memoryAdapter);
+// Use specific namespace for operation
+await cache.set('user:123', userData, { namespace: 'profiles' });
 
-// Perfect for development or single-instance applications
-await cache.save('session:abc123', { userId: 1, permissions: ['read', 'write'] });
-const session = await cache.load('session:abc123', 900); // 15 minutes TTL
+// Clear entire namespace
+await cache.flushNamespace('session');
+
+// Get all keys in namespace
+const keys = await cache.getKeysByNamespace('profiles', 'user:*');
 ```
 
-### Memcached Adapter
+### Tag-based Cache Management
 
 ```typescript
-import { Cache } from '@nuvix/cache';
-import { MemcachedAdapter } from '@nuvix/cache/adapters/memcached';
-import Memcached from 'memcached';
+// Cache with multiple tags
+await cache.set('product:456', productData, {
+  tags: ['products', 'electronics', 'featured'],
+  ttl: 7200
+});
 
-const memcachedClient = new Memcached('localhost:11211');
-const memcachedAdapter = new MemcachedAdapter(memcachedClient);
-const cache = new Cache(memcachedAdapter);
+await cache.set('category:electronics', categoryData, {
+  tags: ['categories', 'electronics']
+});
 
-await cache.save('config:app', { theme: 'dark', language: 'en' });
-const config = await cache.load('config:app', 7200); // 2 hours TTL
+// Invalidate all items with specific tags
+await cache.flushByTags(['electronics']);
+
+// Find all keys with specific tags
+const taggedKeys = await cache.getKeysByTags(['featured', 'products']);
 ```
 
-### None Adapter (No-op)
+### Batch Operations
 
 ```typescript
-import { Cache } from '@nuvix/cache';
-import { None } from '@nuvix/cache/adapters/none';
+// Set multiple values at once
+await cache.mset({
+  'user:1': { name: 'Alice', role: 'admin' },
+  'user:2': { name: 'Bob', role: 'user' },
+  'user:3': { name: 'Charlie', role: 'moderator' }
+}, { ttl: 3600, tags: ['users'] });
 
-// Useful for testing or when you want to disable caching
-const noneAdapter = new None();
-const cache = new Cache(noneAdapter);
+// Get multiple values at once
+const users = await cache.mget(['user:1', 'user:2', 'user:3']);
 
-// All operations return false/empty but don't throw errors
-await cache.save('key', 'value'); // returns false
-const value = await cache.load('key', 3600); // returns false
+// Delete multiple keys
+const deletedCount = await cache.deleteMany(['user:1', 'user:2']);
+```
+
+### Atomic Operations
+
+```typescript
+// Increment/decrement counters
+const views = await cache.increment('page:views:home', 1);
+const downloads = await cache.decrement('quota:downloads:user123', 1);
+
+// Set with expiration
+await cache.set('temp:token:abc123', tokenData, { ttl: 300 }); // 5 minutes
+
+// Update TTL for existing key
+await cache.expire('session:xyz789', 1800); // Extend to 30 minutes
+
+// Check TTL
+const timeLeft = await cache.ttl('session:xyz789');
+```
+
+### Pipeline Operations (Redis Only)
+
+```typescript
+// Use pipeline for efficient batch operations
+const pipeline = cache.pipeline();
+if (pipeline) {
+  pipeline
+    .set('key1', 'value1', { ttl: 300 })
+    .set('key2', 'value2', { ttl: 600 })
+    .get('existing-key')
+    .del('old-key')
+    .expire('another-key', 900);
+    
+  const results = await pipeline.exec();
+  console.log('Pipeline results:', results);
+}
+```
+
+### Compression and Metadata
+
+```typescript
+// Large objects are automatically compressed (if enabled)
+await cache.set('large-dataset', hugejsonObject, {
+  compression: true,
+  metadata: { 
+    source: 'analytics-api',
+    generatedAt: Date.now(),
+    version: '2.1.0'
+  }
+});
+
+// Get with metadata
+const result = await cache.get('large-dataset', { includeMetadata: true });
+console.log(result.data); // Your data
+console.log(result.metadata); // Metadata
+console.log(result.createdAt); // Timestamp
 ```
 ## 🔧 Telemetry Integration
 

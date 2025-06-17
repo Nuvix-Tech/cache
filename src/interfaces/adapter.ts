@@ -1,3 +1,35 @@
+export interface CacheEntry<T = any> {
+  data: T;
+  createdAt: number;
+  expiresAt?: number;
+  metadata?: Record<string, any>;
+}
+
+export interface CacheOptions {
+  ttl?: number;
+  namespace?: string;
+  tags?: string[];
+  metadata?: Record<string, any>;
+  compression?: boolean;
+  serialize?: boolean;
+}
+
+export interface CacheStats {
+  hits: number;
+  misses: number;
+  sets: number;
+  deletes: number;
+  errors: number;
+  memoryUsage?: number;
+  keyCount?: number;
+}
+
+export interface BatchOperation<T = any> {
+  key: string;
+  value?: T;
+  options?: CacheOptions;
+}
+
 export interface Adapter {
   /**
    * Retrieves a cached item by key.
@@ -56,4 +88,119 @@ export interface Adapter {
    * @returns The adapter name or key-specific identifier.
    */
   getName(key?: string): string;
+}
+
+export interface EnhancedAdapter extends Adapter {
+  /**
+   * Sets a value with advanced options.
+   */
+  set<T>(key: string, value: T, options?: CacheOptions): Promise<boolean>;
+
+  /**
+   * Gets a value with metadata.
+   */
+  get<T>(key: string, options?: { includeMetadata?: boolean }): Promise<T | CacheEntry<T> | null>;
+
+  /**
+   * Gets multiple values at once.
+   */
+  mget<T>(keys: string[], options?: CacheOptions): Promise<(T | null)[]>;
+
+  /**
+   * Sets multiple values at once.
+   */
+  mset<T>(entries: Record<string, T>, options?: CacheOptions): Promise<boolean>;
+
+  /**
+   * Deletes multiple keys at once.
+   */
+  mdel(keys: string[], options?: CacheOptions): Promise<number>;
+
+  /**
+   * Checks if a key exists.
+   */
+  exists(key: string, options?: CacheOptions): Promise<boolean>;
+
+  /**
+   * Sets TTL for existing key.
+   */
+  expire(key: string, ttl: number, options?: CacheOptions): Promise<boolean>;
+
+  /**
+   * Gets TTL for a key.
+   */
+  ttl(key: string, options?: CacheOptions): Promise<number>;
+
+  /**
+   * Increments a numeric value.
+   */
+  increment(key: string, amount?: number, options?: CacheOptions): Promise<number>;
+
+  /**
+   * Decrements a numeric value.
+   */
+  decrement(key: string, amount?: number, options?: CacheOptions): Promise<number>;
+
+  /**
+   * Clears cache by namespace.
+   */
+  flushNamespace(namespace: string): Promise<boolean>;
+
+  /**
+   * Clears cache by tags.
+   */
+  flushByTags(tags: string[]): Promise<boolean>;
+
+  /**
+   * Gets cache statistics.
+   */
+  getStats(): Promise<CacheStats>;
+
+  /**
+   * Gets all keys in a namespace.
+   */
+  getKeysByNamespace(namespace: string, pattern?: string): Promise<string[]>;
+
+  /**
+   * Gets all keys with specific tags.
+   */
+  getKeysByTags(tags: string[]): Promise<string[]>;
+
+  /**
+   * Compresses data if needed.
+   */
+  compress?(data: any): Promise<string | Buffer>;
+
+  /**
+   * Decompresses data if needed.
+   */
+  decompress?(data: string | Buffer): Promise<any>;
+
+  /**
+   * Sets namespace for the adapter.
+   */
+  setNamespace(namespace: string): void;
+
+  /**
+   * Gets current namespace.
+   */
+  getNamespace(): string;
+
+  /**
+   * Creates a pipeline for batch operations.
+   */
+  pipeline?(): Pipeline;
+
+  /**
+   * Executes a transaction.
+   */
+  transaction?(operations: BatchOperation[]): Promise<any[]>;
+}
+
+export interface Pipeline {
+  set<T>(key: string, value: T, options?: CacheOptions): Pipeline;
+  get(key: string, options?: CacheOptions): Pipeline;
+  del(key: string, options?: CacheOptions): Pipeline;
+  expire(key: string, ttl: number, options?: CacheOptions): Pipeline;
+  exec(): Promise<any[]>;
 }
