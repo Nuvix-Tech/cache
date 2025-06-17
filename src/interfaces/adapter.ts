@@ -1,4 +1,4 @@
-export interface CacheAdapter {
+export interface Adapter {
   /**
    * Retrieves a cached item by key.
    * @param key The cache key.
@@ -6,30 +6,27 @@ export interface CacheAdapter {
    * @param hash Optional hash identifier.
    * @returns The cached value or null if not found.
    */
-  get<T = unknown>(key: string, hash?: string): Promise<T | null>;
+  load<T = unknown>(key: string, ttl: number, hash?: string): Promise<T | null>;
 
   /**
    * Stores a value in the cache.
    * @param key The cache key.
-   * @param value The data to store.
-   * @param ttl Optional time-to-live in seconds.
+   * @param data The data to store.
    * @param hash Optional hash identifier.
    * @returns True if successful, otherwise false.
    */
-  set<T = unknown>(
+  save<T = unknown>(
     key: string,
-    value: T,
-    ttl?: number,
+    data: T,
     hash?: string,
   ): Promise<boolean>;
 
   /**
    * Retrieves a list of keys matching a pattern.
-   * @param pattern The key pattern to match.
-   * @param hash Optional hash identifier.
+   * @param key The key pattern to match.
    * @returns An array of matching cache keys.
    */
-  keys(pattern: string, hash?: string): Promise<string[]>;
+  list(key: string): Promise<string[]>;
 
   /**
    * Deletes a cached item by key.
@@ -37,34 +34,25 @@ export interface CacheAdapter {
    * @param hash Optional hash identifier.
    * @returns True if successful, otherwise false.
    */
-  delete(key: string, hash?: string): Promise<boolean>;
+  purge(key: string, hash?: string): Promise<boolean>;
 
   /**
-   * Deletes multiple cached items by their keys.
-   * @param keys The array of cache keys.
-   * @param hash Optional hash identifier.
-   * @returns True if operation completes successfully, otherwise false.
-   */
-  deleteMany(keys: string[], hash?: string): Promise<boolean>;
-
-  /**
-   * Clears all cached data within a hash or globally.
-   * @param hash Optional hash identifier.
+   * Clears all cached data.
    * @returns True if successful, otherwise false.
    */
-  clear(hash?: string): Promise<boolean>;
+  flush(): Promise<boolean>;
 
   /**
    * Checks if the cache connection is active.
    * @returns True if the connection is alive, otherwise false.
    */
-  isAlive(): Promise<boolean>;
+  ping(): Promise<boolean>;
 
   /**
    * Gets the total cache storage size.
    * @returns The size of the cache in bytes.
    */
-  size(): Promise<number>;
+  getSize(): Promise<number>;
 
   /**
    * Returns the name of the cache adapter.
@@ -72,23 +60,4 @@ export interface CacheAdapter {
    * @returns The adapter name or key-specific identifier.
    */
   getName(key?: string): string;
-
-  /**
-   * Extends the TTL of an existing cache entry.
-   * @param key The cache key.
-   * @param ttl Time-to-live in seconds.
-   * @param hash Optional hash identifier.
-   * @returns True if TTL was updated, otherwise false.
-   */
-  extendTTL(key: string, ttl: number, hash?: string): Promise<boolean>;
-
-  close(): Promise<void>;
-
-  mget<T = unknown>(keys: string[], hash?: string): Promise<(T | null)[]>;
-
-  mset<T = unknown>(
-    data: Record<string, T>,
-    hash?: string,
-    ttl?: number,
-  ): Promise<boolean>;
 }

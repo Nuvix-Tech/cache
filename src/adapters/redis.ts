@@ -1,265 +1,106 @@
-import IORedis from "ioredis";
-import { EventEmitter } from "events";
-import { CacheAdapter } from "../interfaces/adapter";
+import { type Adapter } from "../interfaces/adapter";
+import { type RedisClientType } from 'redis';
 
-interface RedisOptions {
-  host?: string;
-  port?: number;
-  password?: string;
-  tls?: boolean;
-  namespace?: string;
-}
+export class Redis implements Adapter {
+    private redis: RedisClientType;
 
-export class RedisAdapter implements CacheAdapter {
-  private client: IORedis;
-  private namespace: string;
-  private eventEmitter: EventEmitter;
-
-  constructor(options: RedisOptions = {}) {
-    const { tls, ...redisOptions } = options;
-    this.namespace = options.namespace ?? "cache";
-    this.eventEmitter = new EventEmitter();
-
-    if (tls) {
-      this.client = new IORedis({
-        ...redisOptions,
-        tls: { rejectUnauthorized: false },
-      });
-    } else {
-      this.client = new IORedis(redisOptions);
+    constructor(redis: RedisClientType) {
+        this.redis = redis;
     }
 
-    this.client.on("error", (error) => {
-      this.eventEmitter.emit("error", error);
-    });
-  }
+    async load(key: string, ttl: number, hash: string = ''): Promise<any> {
+        if (!hash) {
+            hash = key;
+        }
 
-  private getKey(key: string, hash?: string): string {
-    // Convert empty string hash to undefined to ensure consistent behavior
-    if (hash === "") {
-      hash = undefined;
-    }
-    return hash
-      ? `${this.namespace}:${key}::${hash}`
-      : `${this.namespace}:${key}`;
-  }
+        const redisString = await this.redis.hGet(key, hash);
 
-  async set(
-    key: string,
-    value: any,
-    ttl?: number,
-    hash?: string,
-  ): Promise<boolean> {
-    try {
-      const fullKey = this.getKey(key, hash);
-      const serializedValue = JSON.stringify(value);
+        if (!redisString) {
+            return false;
+        }
 
-      let result;
-      // Setting a short TTL (1 second) in tests can sometimes not expire quickly enough
-      // This ensures TTL is set correctly and expires as expected
-      if (ttl && ttl > 0) {
-        // Use EX option with TTL for expiration in seconds
-        result = await this.client.set(fullKey, serializedValue, "EX", ttl);
-
-        // Force an explicit TTL check - this helps Redis expire the key properly
-        await this.client.ttl(fullKey);
-      } else {
-        result = await this.client.set(fullKey, serializedValue);
-      }
-
-      if (result !== "OK") {
-        throw new Error(`Failed to set value${ttl ? " with TTL" : ""}`);
-      }
-      return true;
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return false;
-    }
-  }
-
-  async get(key: string, hash?: string): Promise<any | null> {
-    try {
-      const fullKey = this.getKey(key, hash);
-      
-      // Directly get the value without extra checks
-      const value = await this.client.get(fullKey);
-      if (!value) return null;
-      
-      return JSON.parse(value);
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return null;
-    }
-  }
-
-  async delete(key: string, hash?: string): Promise<boolean> {
-    try {
-      const fullKey = key.startsWith(`${this.namespace}:`)
-        ? key
-        : this.getKey(key, hash);
-      const res = await this.client.del(fullKey);
-      // Only return true if key existed and was deleted (res === 1)
-      // Return false if the key didn't exist (res === 0)
-      return res === 1;
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return false;
-    }
-  }
-
-  async mget(keys: string[], hash?: string): Promise<(any | null)[]> {
-    try {
-      const fullKeys = keys.map((key) => this.getKey(key, hash));
-      const values = await this.client.mget(...fullKeys);
-
-      return values.map((value) => {
-        if (!value) return null;
         try {
-          return JSON.parse(value) as any;
-        } catch (error) {
-          this.eventEmitter.emit("error", error);
-          return null;
+            const cache = JSON.parse(redisString) as { time: number; data: any };
+            
+            if (cache.time + ttl > Math.floor(Date.now() / 1000)) {
+                return cache.data;
+            }
+        } catch {
+            return false;
         }
-      });
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return new Array(keys.length).fill(null);
+
+        return false;
     }
-  }
 
-  async mset(
-    data: Record<string, any>,
-    hash?: string,
-    ttl?: number,
-  ): Promise<boolean> {
-    try {
-      const pipeline = this.client.pipeline();
-
-      for (const [key, value] of Object.entries(data)) {
-        const fullKey = this.getKey(key, hash);
-        const serializedValue = JSON.stringify(value);
-
-        if (ttl) {
-          pipeline.set(fullKey, serializedValue, "EX", ttl);
-        } else {
-          pipeline.set(fullKey, serializedValue);
+    async save(key: string, data: any, hash: string = ''): Promise<any> {
+        if (!key || !data) {
+            return false;
         }
-      }
 
-      const results = await pipeline.exec();
-      if (!results) return false;
-      return results.every(([err, result]) => !err && result === "OK");
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return false;
-    }
-  }
-
-  async deleteMany(keys: string[], hash?: string): Promise<boolean> {
-    try {
-      const fullKeys = keys.map((key) => {
-        // Check if key already has namespace prefix to avoid double namespacing
-        if (key.startsWith(`${this.namespace}:`)) {
-          return key; // Key already has namespace prefix
+        if (!hash) {
+            hash = key;
         }
-        return this.getKey(key, hash); // Add namespace prefix
-      });
 
-      const deletes = await this.client.del(...fullKeys);
-      return deletes > 0;
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return false;
+        try {
+            const value = JSON.stringify({
+                time: Math.floor(Date.now() / 1000),
+                data
+            });
+
+            await this.redis.hSet(key, hash, value);
+            return data;
+        } catch {
+            return false;
+        }
     }
-  }
 
-  async keys(pattern: string, hash?: string): Promise<string[]> {
-    try {
-      if (hash) {
-        // Use :: as the separator to match the format used in getKey
-        const fullPattern = `${this.namespace}:${pattern}::${hash}`;
-        return await this.client.keys(fullPattern);
-      } else {
-        // Return raw keys without processing them
-        return await this.client.keys(`${this.namespace}:${pattern}`);
-      }
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return [];
+    async list(key: string): Promise<string[]> {
+        try {
+            const keys = await this.redis.hKeys(key);
+            return keys || [];
+        } catch {
+            return [];
+        }
     }
-  }
 
-  async ttl(key: string, hash?: string): Promise<number> {
-    try {
-      const fullKey = this.getKey(key, hash);
-      return await this.client.ttl(fullKey);
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return -1;
+    async purge(key: string, hash: string = ''): Promise<boolean> {
+        try {
+            if (hash) {
+                return Boolean(await this.redis.hDel(key, hash));
+            }
+            return Boolean(await this.redis.del(key));
+        } catch {
+            return false;
+        }
     }
-  }
 
-  async extendTTL(key: string, ttl: number, hash?: string): Promise<boolean> {
-    try {
-      const fullKey = this.getKey(key, hash);
-      const exists = await this.client.exists(fullKey);
-      if (!exists) return false;
-      const result = await this.client.expire(fullKey, ttl);
-      if (result !== 1) {
-        throw new Error("Failed to extend TTL");
-      }
-      return true;
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return false;
+    async flush(): Promise<boolean> {
+        try {
+            await this.redis.flushAll();
+            return true;
+        } catch {
+            return false;
+        }
     }
-  }
 
-  async clear(hash?: string): Promise<boolean> {
-    try {
-      const pattern = hash
-        ? `${this.namespace}:*::${hash}`
-        : `${this.namespace}:*`;
-      const keys = await this.client.keys(pattern);
-      if (keys.length > 0) {
-        await this.client.del(...keys);
-      }
-      return true;
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return false;
+    async ping(): Promise<boolean> {
+        try {
+            await this.redis.ping();
+            return true;
+        } catch {
+            return false;
+        }
     }
-  }
 
-  async isAlive(): Promise<boolean> {
-    try {
-      await this.client.ping();
-      return true;
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return false;
+    async getSize(): Promise<number> {
+        try {
+            return await this.redis.dbSize();
+        } catch {
+            return 0;
+        }
     }
-  }
 
-  async size(): Promise<number> {
-    try {
-      const keys = await this.client.keys(`${this.namespace}:*`);
-      return keys.length;
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-      return 0;
+    getName(key?: string): string {
+        return 'redis';
     }
-  }
-
-  async close(): Promise<void> {
-    try {
-      await this.client.quit();
-    } catch (error) {
-      this.eventEmitter.emit("error", error);
-    }
-  }
-
-  getName(): string {
-    return "redis";
-  }
 }
