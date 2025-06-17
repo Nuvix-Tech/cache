@@ -1,14 +1,14 @@
 import { Redis } from "../src/adapters/redis";
-import { type RedisClientType } from "redis";
 import { getRedisClient } from "./setup";
+import IORedis from 'ioredis';
 
 describe("Redis Adapter", () => {
   let adapter: Redis;
-  let redisClient: RedisClientType;
+  let redisClient: IORedis;
 
   beforeAll(async () => {
     try {
-      redisClient = await getRedisClient();
+      redisClient = new IORedis()
       adapter = new Redis(redisClient);
     } catch (error) {
       console.warn("Redis not available, skipping Redis adapter tests");
@@ -18,7 +18,7 @@ describe("Redis Adapter", () => {
   beforeEach(async () => {
     if (redisClient) {
       // Clean the test database before each test
-      await redisClient.flushDb();
+      await redisClient.flushdb();
     }
   });
 
@@ -46,7 +46,7 @@ describe("Redis Adapter", () => {
       expect(result).toEqual(testData);
 
       // Verify data was actually saved in Redis
-      const savedData = await redisClient.hGet("test-key", "test-key");
+      const savedData = await redisClient.hget("test-key", "test-key");
       expect(savedData).toBeTruthy();
 
       const parsed = JSON.parse(savedData!);
@@ -62,7 +62,7 @@ describe("Redis Adapter", () => {
       expect(result).toEqual(testData);
 
       // Verify data was saved with custom hash
-      const savedData = await redisClient.hGet("test-key", "custom-hash");
+      const savedData = await redisClient.hget("test-key", "custom-hash");
       expect(savedData).toBeTruthy();
 
       const parsed = JSON.parse(savedData!);
@@ -75,7 +75,7 @@ describe("Redis Adapter", () => {
 
       await adapter.save("test-key", testData);
 
-      const savedData = await redisClient.hGet("test-key", "test-key");
+      const savedData = await redisClient.hget("test-key", "test-key");
       const parsed = JSON.parse(savedData!);
 
       expect(parsed.time).toBeGreaterThanOrEqual(beforeSave);
@@ -138,7 +138,7 @@ describe("Redis Adapter", () => {
       };
 
       // Manually insert expired data
-      await redisClient.hSet(
+      await redisClient.hset(
         "test-key",
         "test-key",
         JSON.stringify(expiredCacheEntry),
@@ -155,7 +155,7 @@ describe("Redis Adapter", () => {
 
     skipIfNoRedis()("should handle invalid JSON gracefully", async () => {
       // Insert invalid JSON
-      await redisClient.hSet("test-key", "test-key", "invalid-json{");
+      await redisClient.hset("test-key", "test-key", "invalid-json{");
 
       const result = await adapter.load("test-key", 3600);
       expect(result).toBe(false);
@@ -170,7 +170,7 @@ describe("Redis Adapter", () => {
         data: { message: "Fresh data" },
       };
 
-      await redisClient.hSet(
+      await redisClient.hset(
         "fresh-key",
         "fresh-key",
         JSON.stringify(freshCacheEntry),
@@ -185,7 +185,7 @@ describe("Redis Adapter", () => {
         data: { message: "Expired data" },
       };
 
-      await redisClient.hSet(
+      await redisClient.hset(
         "expired-key",
         "expired-key",
         JSON.stringify(expiredCacheEntry),
@@ -199,17 +199,17 @@ describe("Redis Adapter", () => {
   describe("List Operation", () => {
     skipIfNoRedis()("should return list of hash keys", async () => {
       // Create some hash entries
-      await redisClient.hSet(
+      await redisClient.hset(
         "test-key",
         "hash1",
         JSON.stringify({ data: "value1", time: Date.now() }),
       );
-      await redisClient.hSet(
+      await redisClient.hset(
         "test-key",
         "hash2",
         JSON.stringify({ data: "value2", time: Date.now() }),
       );
-      await redisClient.hSet(
+      await redisClient.hset(
         "test-key",
         "hash3",
         JSON.stringify({ data: "value3", time: Date.now() }),
@@ -234,7 +234,7 @@ describe("Redis Adapter", () => {
   describe("Purge Operation", () => {
     skipIfNoRedis()("should purge specific hash", async () => {
       // Create hash entry
-      await redisClient.hSet(
+      await redisClient.hset(
         "test-key",
         "hash123",
         JSON.stringify({ data: "value", time: Date.now() }),
@@ -244,7 +244,7 @@ describe("Redis Adapter", () => {
       expect(result).toBe(true);
 
       // Verify it was deleted
-      const remaining = await redisClient.hGet("test-key", "hash123");
+      const remaining = await redisClient.hget("test-key", "hash123");
       expect(remaining).toBeNull();
     });
 
@@ -252,12 +252,12 @@ describe("Redis Adapter", () => {
       "should purge entire key when no hash specified",
       async () => {
         // Create some data
-        await redisClient.hSet(
+        await redisClient.hset(
           "test-key",
           "hash1",
           JSON.stringify({ data: "value1", time: Date.now() }),
         );
-        await redisClient.hSet(
+        await redisClient.hset(
           "test-key",
           "hash2",
           JSON.stringify({ data: "value2", time: Date.now() }),
@@ -291,7 +291,7 @@ describe("Redis Adapter", () => {
       expect(result).toBe(true);
 
       // Verify data was flushed
-      const size = await redisClient.dbSize();
+      const size = await redisClient.dbsize();
       expect(size).toBe(0);
     });
   });
