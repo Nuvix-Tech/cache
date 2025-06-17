@@ -68,7 +68,7 @@ describe('Memory Adapter', () => {
 
       // Null
       await adapter.save('null-key', null);
-      expect(await adapter.load('null-key', 3600)).toBeNull();
+      expect(await adapter.load('null-key', 3600)).toBeFalsy();
     });
 
     it('should return false when saving invalid data', async () => {

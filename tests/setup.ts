@@ -38,7 +38,7 @@ export async function cleanupRedis(): Promise<void> {
   if (redisClient) {
     try {
       await redisClient.flushDb(); // Clear test database
-      await redisClient.disconnect();
+      await redisClient.destroy();
       redisClient = null;
     } catch (error) {
       console.warn('Error cleaning up Redis:', error);

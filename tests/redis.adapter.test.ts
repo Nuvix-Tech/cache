@@ -24,9 +24,9 @@ describe('Redis Adapter', () => {
 
   // Helper function to skip tests if Redis is not available
   const skipIfNoRedis = () => {
-    if (!redisClient || !adapter) {
-      return test.skip;
-    }
+    // if (!redisClient || !adapter) {
+    //   return test.skip;
+    // }
     return test;
   };
 
