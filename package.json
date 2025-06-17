@@ -1,6 +1,6 @@
 {
   "name": "@nuvix/cache",
-  "version": "1.0.3",
+  "version": "1.0.3-alpha.1",
   "description": "A high-performance, flexible caching library with Redis support, compression, and telemetry integration",
   "type": "module",
   "main": "dist/index.cjs.js",
