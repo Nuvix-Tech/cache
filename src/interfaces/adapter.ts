@@ -15,11 +15,7 @@ export interface Adapter {
    * @param hash Optional hash identifier.
    * @returns True if successful, otherwise false.
    */
-  save<T = unknown>(
-    key: string,
-    data: T,
-    hash?: string,
-  ): Promise<boolean>;
+  save<T = unknown>(key: string, data: T, hash?: string): Promise<boolean>;
 
   /**
    * Retrieves a list of keys matching a pattern.
