@@ -99,7 +99,10 @@ export interface EnhancedAdapter extends Adapter {
   /**
    * Gets a value with metadata.
    */
-  get<T>(key: string, options?: { includeMetadata?: boolean }): Promise<T | CacheEntry<T> | null>;
+  get<T>(
+    key: string,
+    options?: { includeMetadata?: boolean },
+  ): Promise<T | CacheEntry<T> | null>;
 
   /**
    * Gets multiple values at once.
@@ -134,12 +137,20 @@ export interface EnhancedAdapter extends Adapter {
   /**
    * Increments a numeric value.
    */
-  increment(key: string, amount?: number, options?: CacheOptions): Promise<number>;
+  increment(
+    key: string,
+    amount?: number,
+    options?: CacheOptions,
+  ): Promise<number>;
 
   /**
    * Decrements a numeric value.
    */
-  decrement(key: string, amount?: number, options?: CacheOptions): Promise<number>;
+  decrement(
+    key: string,
+    amount?: number,
+    options?: CacheOptions,
+  ): Promise<number>;
 
   /**
    * Clears cache by namespace.

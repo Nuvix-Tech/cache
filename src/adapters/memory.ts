@@ -1,4 +1,4 @@
-import { type Adapter } from "../interfaces/adapter";
+import { type Adapter } from "../interfaces/adapter.js";
 
 interface CacheEntry {
   time: number;

@@ -1,6 +1,6 @@
 import { Redis } from "../src/adapters/redis";
 import { getRedisClient } from "./setup";
-import IORedis from 'ioredis';
+import IORedis from "ioredis";
 
 describe("Redis Adapter", () => {
   let adapter: Redis;
@@ -8,7 +8,7 @@ describe("Redis Adapter", () => {
 
   beforeAll(async () => {
     try {
-      redisClient = new IORedis()
+      redisClient = new IORedis();
       adapter = new Redis(redisClient);
     } catch (error) {
       console.warn("Redis not available, skipping Redis adapter tests");

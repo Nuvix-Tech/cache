@@ -1,41 +1,21 @@
 {
   "name": "@nuvix/cache",
-  "version": "1.0.3-alpha.1",
+  "version": "1.0.4",
   "description": "A high-performance, flexible caching library with Redis support, compression, and telemetry integration",
   "type": "module",
-  "main": "dist/index.cjs.js",
-  "module": "dist/index.esm.js",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js"
-    },
-    "./adapters/redis": {
-      "types": "./dist/adapters/redis.d.ts",
-      "import": "./dist/adapters/redis.esm.js",
-      "require": "./dist/adapters/redis.cjs.js"
-    },
-    "./adapters/memory": {
-      "types": "./dist/adapters/memory.d.ts",
-      "import": "./dist/adapters/memory.esm.js",
-      "require": "./dist/adapters/memory.cjs.js"
-    },
-    "./adapters/memcached": {
-      "types": "./dist/adapters/memcached.d.ts",
-      "import": "./dist/adapters/memcached.esm.js",
-      "require": "./dist/adapters/memcached.cjs.js"
-    },
-    "./adapters/none": {
-      "types": "./dist/adapters/none.d.ts",
-      "import": "./dist/adapters/none.esm.js",
-      "require": "./dist/adapters/none.cjs.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "scripts": {
-    "build": "rollup -c",
-    "build:watch": "rollup -c -w",
+    "build": "tsup",
+    "build:watch": "tsup -w",
     "build:tsc": "tsc",
     "lint": "eslint . --ext .ts",
     "test": "jest",
@@ -76,9 +56,6 @@
     "ioredis": "^5.6.0"
   },
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^28.0.5",
-    "@rollup/plugin-node-resolve": "^16.0.1",
-    "@rollup/plugin-typescript": "^12.1.2",
     "@types/jest": "^29.5.14",
     "@types/memcached": "^2.2.10",
     "@types/node": "^20.11.24",
@@ -92,15 +69,13 @@
     "memcached": "^2.2.2",
     "prettier": "^3.2.5",
     "redis": "^5.5.6",
-    "rollup": "^4.43.0",
-    "rollup-plugin-dts": "^6.2.1",
     "ts-jest": "^29.1.0",
-    "tslib": "^2.8.1",
+    "tsup": "^8.5.0",
     "typedoc": "^0.25.12",
     "typescript": "^5.2.0"
   },
   "peerDependencies": {
-    "@nuvix/telemetry": "^1.0.1"
+    "@nuvix/telemetry": "^1.0.2"
   },
   "engines": {
     "node": ">=18.0.0"

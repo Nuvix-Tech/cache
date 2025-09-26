@@ -1,5 +1,16 @@
-import { type EnhancedAdapter, type CacheOptions, type CacheEntry, type CacheStats, type BatchOperation, type Pipeline as IPipeline } from "../interfaces/adapter";
-import IORedis, { type RedisOptions, type Pipeline as RedisPipeline } from "ioredis";
+import {
+  type EnhancedAdapter,
+  type CacheOptions,
+  type CacheEntry,
+  type CacheStats,
+  type BatchOperation,
+  type Pipeline as IPipeline,
+} from "../interfaces/adapter.js";
+import {
+  Redis as IORedis,
+  type RedisOptions,
+  type Pipeline as RedisPipeline,
+} from "ioredis";
 import { promisify } from "util";
 import { gzip, gunzip } from "zlib";
 
@@ -33,13 +44,27 @@ export class Redis implements EnhancedAdapter {
 
   constructor(client: IORedis, options?: Partial<RedisAdapterOptions>);
   constructor(options: RedisAdapterOptions);
-  constructor(clientOrOptions: IORedis | RedisAdapterOptions, options: Partial<RedisAdapterOptions> = {}) {
+  constructor(
+    clientOrOptions: IORedis | RedisAdapterOptions,
+    options: Partial<RedisAdapterOptions> = {},
+  ) {
     if (clientOrOptions instanceof IORedis) {
       this.redis = clientOrOptions;
       this.setupOptions(options);
     } else {
       const redisAdapterOptions = clientOrOptions as RedisAdapterOptions;
-      const { namespace, defaultTTL, enableCompression, compressionThreshold, keyPrefix, tagPrefix, metadataPrefix, maxKeyLength, maxValueSize, ...redisOptions } = redisAdapterOptions;
+      const {
+        namespace,
+        defaultTTL,
+        enableCompression,
+        compressionThreshold,
+        keyPrefix,
+        tagPrefix,
+        metadataPrefix,
+        maxKeyLength,
+        maxValueSize,
+        ...redisOptions
+      } = redisAdapterOptions;
       this.redis = new IORedis(redisOptions);
       this.setupOptions(redisAdapterOptions);
     }
@@ -49,18 +74,18 @@ export class Redis implements EnhancedAdapter {
       misses: 0,
       sets: 0,
       deletes: 0,
-      errors: 0
+      errors: 0,
     };
   }
 
   private setupOptions(options: Partial<RedisAdapterOptions>): void {
-    this.namespace = options.namespace || 'cache';
+    this.namespace = options.namespace || "cache";
     this.defaultTTL = options.defaultTTL || 3600;
     this.enableCompression = options.enableCompression || false;
     this.compressionThreshold = options.compressionThreshold || 1024;
-    this.keyPrefix = options.keyPrefix || 'cache:';
-    this.tagPrefix = options.tagPrefix || 'tag:';
-    this.metadataPrefix = options.metadataPrefix || 'meta:';
+    this.keyPrefix = options.keyPrefix || "cache:";
+    this.tagPrefix = options.tagPrefix || "tag:";
+    this.metadataPrefix = options.metadataPrefix || "meta:";
     this.maxKeyLength = options.maxKeyLength || 250;
     this.maxValueSize = options.maxValueSize || 512 * 1024; // 512KB
   }
@@ -68,11 +93,13 @@ export class Redis implements EnhancedAdapter {
   private buildKey(key: string, options?: CacheOptions): string {
     const namespace = options?.namespace || this.namespace;
     const fullKey = `${this.keyPrefix}${namespace}:${key}`;
-    
+
     if (fullKey.length > this.maxKeyLength) {
-      throw new Error(`Key length exceeds maximum of ${this.maxKeyLength} characters`);
+      throw new Error(
+        `Key length exceeds maximum of ${this.maxKeyLength} characters`,
+      );
     }
-    
+
     return fullKey;
   }
 
@@ -84,28 +111,37 @@ export class Redis implements EnhancedAdapter {
     return `${this.metadataPrefix}${key}`;
   }
 
-  private async serializeValue(value: any, options?: CacheOptions): Promise<string> {
+  private async serializeValue(
+    value: any,
+    options?: CacheOptions,
+  ): Promise<string> {
     let serialized = JSON.stringify(value);
-    
+
     if (serialized.length > this.maxValueSize) {
-      throw new Error(`Value size exceeds maximum of ${this.maxValueSize} bytes`);
+      throw new Error(
+        `Value size exceeds maximum of ${this.maxValueSize} bytes`,
+      );
     }
 
-    if (this.enableCompression && (options?.compression !== false) && serialized.length > this.compressionThreshold) {
+    if (
+      this.enableCompression &&
+      options?.compression !== false &&
+      serialized.length > this.compressionThreshold
+    ) {
       const compressed = await this.compress(serialized);
-      return `__compressed__${compressed.toString('base64')}`;
+      return `__compressed__${compressed.toString("base64")}`;
     }
 
     return serialized;
   }
 
   private async deserializeValue(value: string): Promise<any> {
-    if (value.startsWith('__compressed__')) {
-      const compressed = Buffer.from(value.substring(14), 'base64');
+    if (value.startsWith("__compressed__")) {
+      const compressed = Buffer.from(value.substring(14), "base64");
       const decompressed = await this.decompress(compressed);
       return JSON.parse(decompressed.toString());
     }
-    
+
     return JSON.parse(value);
   }
 
@@ -128,23 +164,27 @@ export class Redis implements EnhancedAdapter {
   }
 
   // Enhanced methods
-  async set<T>(key: string, value: T, options: CacheOptions = {}): Promise<boolean> {
+  async set<T>(
+    key: string,
+    value: T,
+    options: CacheOptions = {},
+  ): Promise<boolean> {
     try {
       const redisKey = this.buildKey(key, options);
       const ttl = options.ttl || this.defaultTTL;
-      const expiresAt = ttl > 0 ? Date.now() + (ttl * 1000) : undefined;
+      const expiresAt = ttl > 0 ? Date.now() + ttl * 1000 : undefined;
 
       const entry: CacheEntry<T> = {
         data: value,
         createdAt: Date.now(),
         expiresAt,
-        metadata: options.metadata
+        metadata: options.metadata,
       };
 
       const serializedValue = await this.serializeValue(entry, options);
-      
+
       const pipeline = this.redis.pipeline();
-      
+
       if (ttl > 0) {
         pipeline.setex(redisKey, ttl, serializedValue);
       } else {
@@ -180,7 +220,10 @@ export class Redis implements EnhancedAdapter {
     }
   }
 
-  async get<T>(key: string, options: { includeMetadata?: boolean } & CacheOptions = {}): Promise<T | CacheEntry<T> | null> {
+  async get<T>(
+    key: string,
+    options: { includeMetadata?: boolean; } & CacheOptions = {},
+  ): Promise<T | CacheEntry<T> | null> {
     try {
       const redisKey = this.buildKey(key, options);
       const value = await this.redis.get(redisKey);
@@ -200,11 +243,11 @@ export class Redis implements EnhancedAdapter {
       }
 
       this.stats.hits++;
-      
+
       if (options.includeMetadata) {
         return entry;
       }
-      
+
       return entry.data;
     } catch (error) {
       this.stats.errors++;
@@ -212,13 +255,16 @@ export class Redis implements EnhancedAdapter {
     }
   }
 
-  async mget<T>(keys: string[], options: CacheOptions = {}): Promise<(T | null)[]> {
+  async mget<T>(
+    keys: string[],
+    options: CacheOptions = {},
+  ): Promise<(T | null)[]> {
     try {
-      const redisKeys = keys.map(key => this.buildKey(key, options));
+      const redisKeys = keys.map((key) => this.buildKey(key, options));
       const values = await this.redis.mget(...redisKeys);
-      
+
       const results: (T | null)[] = [];
-      
+
       for (let i = 0; i < values.length; i++) {
         const value = values[i];
         if (!value) {
@@ -229,7 +275,7 @@ export class Redis implements EnhancedAdapter {
 
         try {
           const entry: CacheEntry<T> = await this.deserializeValue(value);
-          
+
           if (entry.expiresAt && entry.expiresAt < Date.now()) {
             results.push(null);
             this.stats.misses++;
@@ -244,7 +290,7 @@ export class Redis implements EnhancedAdapter {
           this.stats.misses++;
         }
       }
-      
+
       return results;
     } catch (error) {
       this.stats.errors++;
@@ -252,24 +298,27 @@ export class Redis implements EnhancedAdapter {
     }
   }
 
-  async mset<T>(entries: Record<string, T>, options: CacheOptions = {}): Promise<boolean> {
+  async mset<T>(
+    entries: Record<string, T>,
+    options: CacheOptions = {},
+  ): Promise<boolean> {
     try {
       const pipeline = this.redis.pipeline();
       const ttl = options.ttl || this.defaultTTL;
 
       for (const [key, value] of Object.entries(entries)) {
         const redisKey = this.buildKey(key, options);
-        const expiresAt = ttl > 0 ? Date.now() + (ttl * 1000) : undefined;
+        const expiresAt = ttl > 0 ? Date.now() + ttl * 1000 : undefined;
 
         const entry: CacheEntry<T> = {
           data: value,
           createdAt: Date.now(),
           expiresAt,
-          metadata: options.metadata
+          metadata: options.metadata,
         };
 
         const serializedValue = await this.serializeValue(entry, options);
-        
+
         if (ttl > 0) {
           pipeline.setex(redisKey, ttl, serializedValue);
         } else {
@@ -299,7 +348,7 @@ export class Redis implements EnhancedAdapter {
 
   async mdel(keys: string[], options: CacheOptions = {}): Promise<number> {
     try {
-      const redisKeys = keys.map(key => this.buildKey(key, options));
+      const redisKeys = keys.map((key) => this.buildKey(key, options));
       const result = await this.redis.del(...redisKeys);
       this.stats.deletes += result;
       return result;
@@ -320,7 +369,11 @@ export class Redis implements EnhancedAdapter {
     }
   }
 
-  async expire(key: string, ttl: number, options: CacheOptions = {}): Promise<boolean> {
+  async expire(
+    key: string,
+    ttl: number,
+    options: CacheOptions = {},
+  ): Promise<boolean> {
     try {
       const redisKey = this.buildKey(key, options);
       const result = await this.redis.expire(redisKey, ttl);
@@ -341,16 +394,20 @@ export class Redis implements EnhancedAdapter {
     }
   }
 
-  async increment(key: string, amount: number = 1, options: CacheOptions = {}): Promise<number> {
+  async increment(
+    key: string,
+    amount: number = 1,
+    options: CacheOptions = {},
+  ): Promise<number> {
     try {
       const redisKey = this.buildKey(key, options);
       const result = await this.redis.incrby(redisKey, amount);
-      
+
       const ttl = options.ttl || this.defaultTTL;
       if (ttl > 0) {
         await this.redis.expire(redisKey, ttl);
       }
-      
+
       return result;
     } catch (error) {
       this.stats.errors++;
@@ -358,16 +415,20 @@ export class Redis implements EnhancedAdapter {
     }
   }
 
-  async decrement(key: string, amount: number = 1, options: CacheOptions = {}): Promise<number> {
+  async decrement(
+    key: string,
+    amount: number = 1,
+    options: CacheOptions = {},
+  ): Promise<number> {
     try {
       const redisKey = this.buildKey(key, options);
       const result = await this.redis.decrby(redisKey, amount);
-      
+
       const ttl = options.ttl || this.defaultTTL;
       if (ttl > 0) {
         await this.redis.expire(redisKey, ttl);
       }
-      
+
       return result;
     } catch (error) {
       this.stats.errors++;
@@ -379,12 +440,12 @@ export class Redis implements EnhancedAdapter {
     try {
       const pattern = `${this.keyPrefix}${namespace}:*`;
       const keys = await this.redis.keys(pattern);
-      
+
       if (keys.length > 0) {
         await this.redis.del(...keys);
         this.stats.deletes += keys.length;
       }
-      
+
       return true;
     } catch (error) {
       this.stats.errors++;
@@ -400,7 +461,7 @@ export class Redis implements EnhancedAdapter {
       for (const tag of tags) {
         const tagKey = this.buildTagKey(tag);
         const keys = await this.redis.smembers(tagKey);
-        keys.forEach(key => allKeys.add(key));
+        keys.forEach((key) => allKeys.add(key));
         pipeline.del(tagKey);
       }
 
@@ -420,17 +481,20 @@ export class Redis implements EnhancedAdapter {
   async getStats(): Promise<CacheStats> {
     try {
       const keyCount = await this.redis.dbsize();
-      
+
       return {
         ...this.stats,
-        keyCount
+        keyCount,
       };
     } catch (error) {
       return this.stats;
     }
   }
 
-  async getKeysByNamespace(namespace: string, pattern: string = '*'): Promise<string[]> {
+  async getKeysByNamespace(
+    namespace: string,
+    pattern: string = "*",
+  ): Promise<string[]> {
     try {
       const searchPattern = `${this.keyPrefix}${namespace}:${pattern}`;
       return await this.redis.keys(searchPattern);
@@ -443,13 +507,13 @@ export class Redis implements EnhancedAdapter {
   async getKeysByTags(tags: string[]): Promise<string[]> {
     try {
       const allKeys = new Set<string>();
-      
+
       for (const tag of tags) {
         const tagKey = this.buildTagKey(tag);
         const keys = await this.redis.smembers(tagKey);
-        keys.forEach(key => allKeys.add(key));
+        keys.forEach((key) => allKeys.add(key));
       }
-      
+
       return Array.from(allKeys);
     } catch (error) {
       this.stats.errors++;
@@ -463,23 +527,23 @@ export class Redis implements EnhancedAdapter {
 
   async transaction(operations: BatchOperation[]): Promise<any[]> {
     const pipeline = this.redis.pipeline();
-    
+
     for (const op of operations) {
       if (op.value !== undefined) {
         // Set operation
         const redisKey = this.buildKey(op.key, op.options);
         const ttl = op.options?.ttl || this.defaultTTL;
-        const expiresAt = ttl > 0 ? Date.now() + (ttl * 1000) : undefined;
+        const expiresAt = ttl > 0 ? Date.now() + ttl * 1000 : undefined;
 
         const entry: CacheEntry = {
           data: op.value,
           createdAt: Date.now(),
           expiresAt,
-          metadata: op.options?.metadata
+          metadata: op.options?.metadata,
         };
 
         const serializedValue = await this.serializeValue(entry, op.options);
-        
+
         if (ttl > 0) {
           pipeline.setex(redisKey, ttl, serializedValue);
         } else {
@@ -491,24 +555,28 @@ export class Redis implements EnhancedAdapter {
         pipeline.get(redisKey);
       }
     }
-    
+
     const results = await pipeline.exec();
-    return results ? results.map(([err, result]) => err ? null : result) : [];
+    return results ? results.map(([err, result]) => (err ? null : result)) : [];
   }
 
   // Legacy methods for backward compatibility
-  async load<T>(key: string, ttl: number, hash: string = ""): Promise<T | null> {
+  async load<T>(
+    key: string,
+    ttl: number,
+    hash: string = "",
+  ): Promise<T | null> {
     if (hash) {
       const hashKey = this.buildKey(key);
       const value = await this.redis.hget(hashKey, hash);
-      
+
       if (!value) {
         this.stats.misses++;
         return null;
       }
 
       try {
-        const cache = JSON.parse(value) as { time: number; data: T };
+        const cache = JSON.parse(value) as { time: number; data: T; };
         if (cache.time + ttl > Math.floor(Date.now() / 1000)) {
           this.stats.hits++;
           return cache.data;
@@ -516,12 +584,12 @@ export class Redis implements EnhancedAdapter {
       } catch {
         this.stats.errors++;
       }
-      
+
       this.stats.misses++;
       return null;
     }
 
-    return await this.get<T>(key) as T | null;
+    return (await this.get<T>(key)) as T | null;
   }
 
   async save<T>(key: string, data: T, hash: string = ""): Promise<boolean> {
@@ -551,7 +619,7 @@ export class Redis implements EnhancedAdapter {
 
   async list(key: string): Promise<string[]> {
     try {
-      const pattern = this.buildKey(key.endsWith('*') ? key : `${key}*`);
+      const pattern = this.buildKey(key.endsWith("*") ? key : `${key}*`);
       return await this.redis.keys(pattern);
     } catch {
       this.stats.errors++;
@@ -569,7 +637,7 @@ export class Redis implements EnhancedAdapter {
         }
         return result > 0;
       }
-      
+
       const redisKey = this.buildKey(key);
       const result = await this.redis.del(redisKey);
       if (result > 0) {
@@ -619,19 +687,22 @@ export class Redis implements EnhancedAdapter {
 }
 
 class Pipeline implements IPipeline {
-  constructor(private redisPipeline: RedisPipeline, private adapter: Redis) {}
+  constructor(
+    private redisPipeline: RedisPipeline,
+    private adapter: Redis,
+  ) {}
 
   set<T>(key: string, value: T, options: CacheOptions = {}): Pipeline {
     // Implementation would build the pipeline command
     const redisKey = (this.adapter as any).buildKey(key, options);
     const ttl = options.ttl || (this.adapter as any).defaultTTL;
-    
+
     if (ttl > 0) {
       this.redisPipeline.setex(redisKey, ttl, JSON.stringify(value));
     } else {
       this.redisPipeline.set(redisKey, JSON.stringify(value));
     }
-    
+
     return this;
   }
 
@@ -655,6 +726,6 @@ class Pipeline implements IPipeline {
 
   async exec(): Promise<any[]> {
     const results = await this.redisPipeline.exec();
-    return results ? results.map(([err, result]) => err ? null : result) : [];
+    return results ? results.map(([err, result]) => (err ? null : result)) : [];
   }
 }

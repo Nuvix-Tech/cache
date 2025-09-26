@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "CommonJS",
-    "lib": ["ES2022"],
+    "target":  "es2024",
+    "module": "nodenext",
+    "lib": ["ES2024"],
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
@@ -17,7 +17,7 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "moduleResolution": "Node",
+    "moduleResolution": "nodenext",
     "declaration": true,
     "sourceMap": true
   },
